@@ -23,27 +23,20 @@ package processing.mode.android;
 
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.io.Writer;
-import java.util.List;
+
+import org.antlr.v4.runtime.BufferedTokenStream;
+import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.ParserRuleContext;
 
 import processing.app.*;
 import processing.core.PApplet;
+import processing.mode.java.preproc.PdeParseTreeListener;
 import processing.mode.java.preproc.PdePreprocessor;
-import processing.mode.java.preproc.PreprocessorResult;
-import antlr.RecognitionException;
-import antlr.TokenStreamException;
-
+import processing.mode.java.preproc.ProcessingParser;
 
 public class AndroidPreprocessor extends PdePreprocessor {
   Sketch sketch;
   String packageName;
-  
-  protected String smoothStatement;
-  protected String sketchQuality; 
-
-  
-  public static final String SMOOTH_REGEX =
-      "(?:^|\\s|;)smooth\\s*\\(\\s*([^\\s,]+)\\s*\\)\\s*\\;";
 
   public AndroidPreprocessor(final Sketch sketch,
                              final String packageName) throws IOException {
@@ -52,181 +45,179 @@ public class AndroidPreprocessor extends PdePreprocessor {
     this.packageName = packageName;
   }
 
-
-  public String[] initSketchSize(String code) throws SketchException {
-    String[] info = parseSketchSize(code, true);
-    if (info == null) {
-      System.err.println("More about the size() command on Android can be");
-      System.err.println("found here: http://wiki.processing.org/w/Android");
-      throw new SketchException("Could not parse the size() command.");
-    }
-    sizeStatement = info[0];
-    sketchWidth = info[1];
-    sketchHeight = info[2];
-    sketchRenderer = info[3];
-    return info;
-  }
-  
-  
-  public String[] initSketchSmooth(String code) throws SketchException {
-    String[] info = parseSketchSmooth(code, true);
-    if (info == null) {
-      System.err.println("More about the size() command on Android can be");
-      System.err.println("found here: http://wiki.processing.org/w/Android");
-      throw new SketchException("Could not parse the size() command.");
-    }
-    smoothStatement = info[0];
-    sketchQuality = info[1];    
-    return info;
-  }
-    
-  
-  static public String[] parseSketchSmooth(String code, boolean fussy) {
-    String[] matches = PApplet.match(scrubComments(code), SMOOTH_REGEX);
-
-    if (matches != null) {
-      boolean badSmooth = false;
-      
-      if (PApplet.parseInt(matches[1], -1) == -1) {
-        badSmooth = true;
-      }
-
-      if (badSmooth && fussy) {
-        // found a reference to smooth, but it didn't seem to contain numbers
-        final String message =
-          "The smooth level of this applet could not automatically\n" +
-          "be determined from your code. Use only a numeric\n" +
-          "value (not variables) for the smooth() command.\n" +
-          "See the smooth() reference for an explanation.";
-        Base.showWarning("Could not find smooth level", message, null);
-//        new Exception().printStackTrace(System.out);
-        return null;
-      }
-      
-      return matches;
-    }
-    return new String[] { null, null };  // not an error, just empty
-  }
-  
-
-  /*
-  protected boolean parseSketchSize() {
-    // This matches against any uses of the size() function, whether numbers
-    // or variables or whatever. This way, no warning is shown if size() isn't
-    // actually used in the applet, which is the case especially for anyone
-    // who is cutting/pasting from the reference.
-
-    String scrubbed = processing.mode.java.JavaBuild.scrubComments(sketch.getCode(0).getProgram());
-    String[] matches = PApplet.match(scrubbed, processing.mode.java.JavaBuild.SIZE_REGEX);
-//    PApplet.println("matches: " + Sketch.SIZE_REGEX);
-//    PApplet.println(matches);
-
-    if (matches != null) {
-      boolean badSize = false;
-
-      if (matches[1].equals("screenWidth") ||
-          matches[1].equals("screenHeight") ||
-          matches[2].equals("screenWidth") ||
-          matches[2].equals("screenHeight")) {
-        final String message =
-          "The screenWidth and screenHeight variables are named\n" +
-          "displayWidth and displayHeight in this release of Processing.";
-        Base.showWarning("Time for a quick update", message, null);
-        return false;
-      }
-
-      if (!matches[1].equals("displayWidth") &&
-          !matches[1].equals("displayHeight") &&
-          PApplet.parseInt(matches[1], -1) == -1) {
-        badSize = true;
-      }
-      if (!matches[2].equals("displayWidth") &&
-          !matches[2].equals("displayHeight") &&
-          PApplet.parseInt(matches[2], -1) == -1) {
-        badSize = true;
-      }
-
-      if (badSize) {
-        // found a reference to size, but it didn't seem to contain numbers
-        final String message =
-          "The size of this applet could not automatically be determined\n" +
-          "from your code. Use only numeric values (not variables) for the\n" +
-          "size() command. See the size() reference for more information.";
-        Base.showWarning("Could not find sketch size", message, null);
-        System.out.println("More about the size() command on Android can be");
-        System.out.println("found here: http://wiki.processing.org/w/Android");
-        return false;
-      }
-
-//      PApplet.println(matches);
-      sizeStatement = matches[0];  // the full method to be removed from the source
-      sketchWidth = matches[1];
-      sketchHeight = matches[2];
-      sketchRenderer = matches[3].trim();
-      if (sketchRenderer.length() == 0) {
-        sketchRenderer = null;
-      }
-    } else {
-      sizeStatement = null;
-      sketchWidth = null;
-      sketchHeight = null;
-      sketchRenderer = null;
-    }
-    return true;
-  }
-  */
-
-
-  public PreprocessorResult write(Writer out, String program, String[] codeFolderPackages)
-  throws SketchException, RecognitionException, TokenStreamException {
-    if (sizeStatement != null) {
-      int start = program.indexOf(sizeStatement);
-      program = program.substring(0, start) +
-      program.substring(start + sizeStatement.length());
-    }
-    // the OpenGL package is back in 2.0a5
-    //program = program.replaceAll("import\\s+processing\\.opengl\\.\\S+;", "");
-    return super.write(out, program, codeFolderPackages);
-  }
-
-
   @Override
-  protected int writeImports(final PrintWriter out,
-                             final List<String> programImports,
-                             final List<String> codeFolderImports) {
-    out.println("package " + packageName + ";");
-    out.println();
-    // add two lines for the package above
-    return 2 + super.writeImports(out, programImports, codeFolderImports);
+  protected PdeParseTreeListener createListener(CommonTokenStream tokens, String sketchName) {
+    return new AndroidParseTreeListener(tokens, sketchName);
   }
+  
+  private class AndroidParseTreeListener extends PdeParseTreeListener {
+    
+    protected String sketchWidth;
+    protected String sketchHeight;
+    protected String sketchRenderer;
+    protected String sketchQuality;
+    
+    protected boolean isSizeValid;
+    protected boolean hasSize;
+    
+    protected boolean isSmoothValid;
+    protected boolean hasSmooth;
 
-
-  protected void writeFooter(PrintWriter out, String className) {
-    if (mode == Mode.STATIC) {
-      // close off draw() definition
-      out.println("noLoop();");
-      out.println(indent + "}");
+    protected AndroidParseTreeListener(BufferedTokenStream tokens, String sketchName) {
+      super(tokens, sketchName);
+    }
+    
+    @Override
+    protected void writeHeader(PrintWriter header) {       
+      writePreprocessorComment(header);
+      writePackage(header);
+      writeImports(header);
+      if (mode == Mode.STATIC || mode == Mode.ACTIVE) writeClassHeader(header);
+      if (mode == Mode.STATIC) writeStaticSketchHeader(header);
+    }
+    
+    protected void writePackage(PrintWriter header) {
+      incLineOffset(); header.println("package " + packageName + ";");
+      incLineOffset(); header.println();
+    }
+    
+    @Override
+    protected void writeFooter(PrintWriter footer) {
+      if (mode == Mode.STATIC) writeStaticSketchFooter(footer);
+      if (mode == Mode.STATIC || mode == Mode.ACTIVE) {
+        writeExtraDeclarations(footer);
+        if (!foundMain) writeMain(footer); 
+        writeClassFooter(footer);
+      }
+    }
+    
+    protected void writeExtraDeclarations(PrintWriter classBody) {
+      if (hasSize && isSizeValid) {
+        if (sketchWidth != null) {
+          classBody.println();
+          classBody.println(indent1 +
+              "public int sketchWidth() { return " + sketchWidth + "; }");
+        }
+        if (sketchHeight != null) {
+          classBody.println();
+          classBody.println(indent1 +
+              "public int sketchHeight() { return " + sketchHeight + "; }");
+        }
+        if (sketchRenderer != null) {
+          classBody.println();
+          classBody.println(indent1 +
+              "public String sketchRenderer() { return " + sketchRenderer + "; }");
+        }
+      } else {
+        if (reportSketchException(new SketchException("Could not parse the size() command."))) {
+          System.err.println("More about the size() command on Android can be");
+          System.err.println("found here: http://wiki.processing.org/w/Android");
+        }
+      }
+      
+      if (hasSmooth) {
+        if (isSmoothValid) {
+          if (sketchQuality != null) {
+            classBody.println();
+            classBody.println(indent1 +
+                "public int sketchQuality() { return " + sketchQuality + "; }");
+          }
+        } else {
+          final String message =
+              "The smooth level of this applet could not automatically\n" +
+              "be determined from your code. Use only a numeric\n" +
+              "value (not variables) for the smooth() command.\n" +
+              "See the smooth() reference for an explanation.";
+            Base.showWarning("Could not find smooth level", message, null);
+        }
+      }
     }
 
-    if ((mode == Mode.STATIC) || (mode == Mode.ACTIVE)) {
-      out.println();
-      
-      if (sketchWidth != null) {
-        out.println(indent + "public int sketchWidth() { return " + sketchWidth + "; }");
-      }
-      if (sketchHeight != null) {
-        out.println(indent + "public int sketchHeight() { return " + sketchHeight + "; }");
-      }
-      if (sketchRenderer != null) {
-        out.println(indent + "public String sketchRenderer() { return " + sketchRenderer + "; }");
+    public void exitApiSizeFunction(ProcessingParser.ApiSizeFunctionContext ctx) {
+      hasSize = true;
+      isSizeValid = false;
+
+      if (isFunctionInSetupOrGlobal(ctx)) {
+        isSizeValid = true;
+        sketchWidth = ctx.getChild(2).getText();
+        if (PApplet.parseInt(sketchWidth, -1) == -1 && !sketchWidth.equals("displayWidth")) {
+          isSizeValid = false;
+          sketchWidth = null;
+        }
+        sketchHeight = ctx.getChild(4).getText();
+        if (PApplet.parseInt(sketchHeight, -1) == -1 && !sketchHeight.equals("displayHeight")) {
+          isSizeValid = false;
+          sketchHeight = null;
+        }      
+        if (ctx.getChildCount() > 6) {
+          sketchRenderer = ctx.getChild(6).getText();
+          if (!(sketchRenderer.equals("P2D") ||
+              sketchRenderer.equals("P3D") ||
+              sketchRenderer.equals("OPENGL") ||
+              sketchRenderer.equals("JAVA2D"))) {
+            isSizeValid = false;
+            sketchRenderer = null;
+          } 
+        }
       }
 
-      if (sketchQuality != null) {
-        out.println(indent + "public int sketchQuality() { return " + sketchQuality + "; }");
+      if (isSizeValid) {
+        rewriter.insertBefore(ctx.start, "/* commented out by preprocessor: ");
+        rewriter.insertAfter(ctx.stop, " */ print(\"\")"); // noop for debugger
       }
+    }
+
+    public void exitApiSmoothFunction(ProcessingParser.ApiSmoothFunctionContext ctx) {
+      hasSmooth = true;
+      isSmoothValid = false;
+
+      if (isFunctionInSetupOrGlobal(ctx)) {
+        isSmoothValid = true;
+        sketchQuality = ctx.getChild(2).getText();
+        if (PApplet.parseInt(sketchQuality, -1) == -1) {
+          isSmoothValid = false;
+          sketchQuality = null;
+        }
+      }
+
+      if (isSmoothValid) {
+        rewriter.insertBefore(ctx.start, "/* commented out by preprocessor: ");
+        rewriter.insertAfter(ctx.stop, " */ print(\"\")"); // noop for debugger
+      }
+    }
+
+    protected boolean isFunctionInSetupOrGlobal(ParserRuleContext ctx) {
+      // this tree climbing could be avoided if grammar is 
+      // adjusted to force context of size()
+
+      System.out.println("depth: " + ctx.depth());
       
-      // close off the class definition
-      out.println("}");
+      if (ctx.depth() < 6) return false;
+
+      ParserRuleContext testCtx = 
+          ctx.getParent() // apiFunction
+          .getParent() // expression
+          .getParent() // statementExpression
+          .getParent() // statement
+          .getParent() // blockStatement
+          .getParent(); // block or staticProcessingSketch
+
+      if (testCtx instanceof ProcessingParser.StaticProcessingSketchContext) return true;
+
+      if (testCtx.depth() < 2) return false;
+      testCtx =
+          testCtx.getParent() // methodBody of setup()
+          .getParent(); // methodDeclaration of setup()
+
+      if (testCtx.depth() < 3) return false;
+      String methodName = testCtx.getChild(1).getText();
+      testCtx = testCtx.getParent() // memberDeclaration
+          .getParent() // classBodyDeclaration
+          .getParent(); // activeProcessingSketch
+
+      return
+          methodName.equals("setup") && 
+          testCtx instanceof ProcessingParser.ActiveProcessingSketchContext;
     }
   }
 
